@@ -82,7 +82,9 @@ class SampleSelectorService:
                     hist.append(hist[-1])
                 strategy_kwargs["wm_ckpt_paths"] = hist[:ensemble_size]
                 strategy_kwargs["ensemble_size"] = ensemble_size
-        elif strategy == "idm":
+        elif strategy in ("idm", "topology"):
+            # topology = idm (WAV) base + lambda * FDM<->IDM topology disagreement;
+            # both need the current WM snapshot paired with the user-supplied CLAM IDM.
             strategy_kwargs.setdefault("wm_ckpt_path", str(current_ckpt))
 
         selection_dir = trainer.config.logdir / "sample_selection"

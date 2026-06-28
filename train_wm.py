@@ -10,9 +10,11 @@ sys.path.append(
 from wav.runtime.config_loader import build_config_from_cli, finalize_runtime_config
 from wav.train_loop import run_training_pipeline
 
-# Force EGL rendering in environments
-os.environ["MUJOCO_GL"] = "egl"
-os.environ["PYOPENGL_PLATFORM"] = "egl"
+# Headless rendering. EGL is preferred but its context teardown fails on some drivers
+# (this box); allow override via MUJOCO_GL (we use osmesa locally, which renders cleanly).
+_gl = os.environ.get("MUJOCO_GL", "egl")
+os.environ["MUJOCO_GL"] = _gl
+os.environ["PYOPENGL_PLATFORM"] = _gl
 
 
 if __name__ == "__main__":

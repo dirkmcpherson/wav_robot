@@ -16,7 +16,13 @@ import numpy as np
 from typing import List, Optional
 
 # import zarr
-import rlds
+# rlds pulls in dm-reverb (heavy, TF-version-pinned) and is only needed for the TFDS data
+# path. The sailor_pool path doesn't use it, and the code below already guards on
+# `rlds is None`, so degrade gracefully when it (or reverb) is unavailable.
+try:
+    import rlds
+except Exception:
+    rlds = None
 
 # NOTE: TFDS data dir is determined by data.data_dir in configs; no hard-coded path here.
 

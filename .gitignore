@@ -1,0 +1,19 @@
+# Regenerated on the cluster — do NOT commit (GBs).
+data/
+results/
+scratch_dir/
+datasets/robomimic_datasets/
+*.hdf5
+*.npz
+*.pt
+*.pkl
+*.ckpt
+
+# logs / run outputs
+*.log
+lambda_sweep_results.txt
+
+# python
+__pycache__/
+*.pyc
+*.pyo
