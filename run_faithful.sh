@@ -9,7 +9,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 . ../.venv_robot_faithful/bin/activate
-export MUJOCO_GL=osmesa PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# Respect an externally-set MUJOCO_GL; default egl (works on cluster GPU nodes). On boxes
+# where egl's context teardown fails (e.g. some local GPUs) set MUJOCO_GL=osmesa before running.
+export MUJOCO_GL="${MUJOCO_GL:-egl}" PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 PP="$PWD:$PWD/IDM"
 
@@ -69,4 +71,13 @@ PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
   --set wm_only_sample_start_itr ${START} --set wm_only_sample_refresh_every ${REFRESH} --set wm_only_sample_mix_ratio 0.3 \
   --set wm_only_train_itrs ${WM_ITRS} --set wm_eval_every $((REFRESH)) \
   --set dp.rollout_snapshot_count 0 --set train_dp_mppi_params.use_discrim False --set dp.pretrained_ckpt "$DPCKPT"
+
+# Stash the final WM per (strategy,scale) BEFORE the next strategy overwrites latest_residual_checkpoint.pt.
+WM_SRC="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/latest_residual_checkpoint.pt"
+if [ -f "$WM_SRC" ]; then
+  cp "$WM_SRC" "scratch_dir/wm_final_${STRATEGY}_${SCALE}.pt"
+  echo "stashed WM -> scratch_dir/wm_final_${STRATEGY}_${SCALE}.pt"
+else
+  echo "WARN: WM checkpoint not found at $WM_SRC (stash skipped)"
+fi
 echo "===== DONE (${STRATEGY}, ${SCALE}) ====="

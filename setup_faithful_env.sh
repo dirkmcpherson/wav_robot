@@ -22,7 +22,7 @@ pip install omegaconf einops termcolor imageio wandb \
 #  mujoco==2.3.5 robosuite==1.4.1 robomimic@<pin> r3m@<pin> gym==0.26.2 first.)
 pip install "ruamel.yaml" timm diffusers "gym==0.26.2"
 # CLAM IDM trainer (IDM/udrm) deps discovered by driving train_idm_action_decoder.py:
-pip install accelerate hydra-core ml_collections moviepy safetensors dm-tree \
+pip install loguru accelerate hydra-core ml_collections moviepy safetensors dm-tree \
             opencv-python imageio-ffmpeg absl-py gdown torchsummary \
             jaxtyping typeguard jax jaxlib
 # GOTCHA: IDM/udrm/utils/dataloader.py top-level `import rlds` pulls dm-reverb (heavy,
