@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1                    # <EDIT> e.g. gpu:a100:1 ; WM-only fits <=16GB
 #SBATCH --cpus-per-task=8               # <EDIT> data loading / sim
 #SBATCH --mem=48G                       # <EDIT>
-#SBATCH --time=24:00:00                 # <EDIT> 2 WM runs (~hrs each) + eval; lower if your partition caps
+#SBATCH --time=02-00:00:00                 # <EDIT> 2 WM runs (~hrs each) + eval; lower if your partition caps
 #SBATCH --output=slurm_wav_%j.out
 #SBATCH --error=slurm_wav_%j.err
 
