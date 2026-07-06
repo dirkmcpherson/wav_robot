@@ -76,11 +76,14 @@ PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
   --set wm_only_train_itrs ${WM_ITRS} --set wm_eval_every $((REFRESH)) \
   --set dp.rollout_snapshot_count 0 --set train_dp_mppi_params.use_discrim False --set dp.pretrained_ckpt "$DPCKPT"
 
-# Stash the final WM per (strategy,scale) BEFORE the next strategy overwrites latest_residual_checkpoint.pt.
+# Stash the final WM per (strategy,scale,seed) BEFORE the next strategy overwrites
+# latest_residual_checkpoint.pt. The seed in the name lets concurrent multi-seed runs
+# (e.g. seed0 on one GPU, seed1 on another) coexist without clobbering each other's stash.
 WM_SRC="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/latest_residual_checkpoint.pt"
+WM_DST="scratch_dir/wm_final_${STRATEGY}_${SCALE}_seed${SEED}.pt"
 if [ -f "$WM_SRC" ]; then
-  cp "$WM_SRC" "scratch_dir/wm_final_${STRATEGY}_${SCALE}.pt"
-  echo "stashed WM -> scratch_dir/wm_final_${STRATEGY}_${SCALE}.pt"
+  cp "$WM_SRC" "$WM_DST"
+  echo "stashed WM -> $WM_DST"
 else
   echo "WARN: WM checkpoint not found at $WM_SRC (stash skipped)"
 fi
