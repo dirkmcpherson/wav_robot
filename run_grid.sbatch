@@ -4,9 +4,11 @@
 # different seeds run in parallel on separate GPUs. DP pool + CLAM are cached -> WM-only.
 # Idempotent: skips any (strategy,seed) already stashed, so resubmits just fill gaps.
 #
-#   sbatch --array=0-1 run_grid.sbatch     # seeds 0 and 1  (n=2)
-#   sbatch --array=1   run_grid.sbatch     # just seed 1    (if seed 0 is running manually)
-#   sbatch --array=1-2 run_grid.sbatch     # seeds 1,2      (extend to n=3)
+# Seed 0 is RESERVED for the legacy manual run (topology done, random/idm run by hand);
+# the array starts at seed 1 so it never collides with that seed-0 logdir.
+#   sbatch run_grid.sbatch                 # default: seed 1        (+ legacy seed 0 -> n=2)
+#   sbatch --array=1-2 run_grid.sbatch     # seeds 1,2              (+ legacy seed 0 -> n=3)
+#   sbatch --array=1-3 run_grid.sbatch     # seeds 1,2,3            (+ legacy seed 0 -> n=4)
 # ==== EDIT THE SBATCH LINES MARKED <EDIT> FOR YOUR CLUSTER ====
 #SBATCH --job-name=wav_grid
 #SBATCH --partition=gpu                 # <EDIT> your GPU partition (sinfo -s)
@@ -14,7 +16,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --time=48:00:00                 # per task = <=3 WM-only runs; DP/CLAM cached
-#SBATCH --array=0-1                     # override on the command line if you like
+#SBATCH --array=1                       # seeds start at 1; seed 0 = legacy manual run
 #SBATCH --output=slurm_wav_seed%a_%A.out
 #SBATCH --error=slurm_wav_seed%a_%A.err
 
