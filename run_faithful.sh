@@ -8,7 +8,11 @@
 #   (STRATEGY in random|idm|topology ; idm/topology reuse the CLAM ckpt from step 3)
 set -euo pipefail
 cd "$(dirname "$0")"
-. ../.venv_robot_faithful/bin/activate
+# Local dev uses a venv; on the cluster the conda env is already active. Only source the
+# venv if it exists — otherwise assume the caller (e.g. the sbatch) already activated the env.
+if [ -f ../.venv_robot_faithful/bin/activate ]; then
+  . ../.venv_robot_faithful/bin/activate
+fi
 # Respect an externally-set MUJOCO_GL; default egl (works on cluster GPU nodes). On boxes
 # where egl's context teardown fails (e.g. some local GPUs) set MUJOCO_GL=osmesa before running.
 export MUJOCO_GL="${MUJOCO_GL:-egl}" PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
