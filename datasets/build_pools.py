@@ -11,7 +11,8 @@ Roles (faithful to the method):
   - train_pool : initial WM training data (expert demos, or a slice of rollouts).
   - eval_pool  : held-out episodes for WM evaluation.
 """
-import argparse, glob, json, os, random
+import argparse, glob, json, os, random, re
+from collections import defaultdict
 from pathlib import Path
 
 
@@ -39,20 +40,52 @@ def _write(path, refs):
     return len(refs)
 
 
+def _snapshot_key(npz_path):
+    """Group rollouts by their DP snapshot: the parent dir (e.g. .../dp_rollouts/step_3000/)."""
+    d = Path(npz_path).parent
+    m = re.findall(r"\d+", d.name)
+    return (str(d), int(m[-1]) if m else 0)
+
+
 def build_pools(rollouts_glob, out_dir, seed=0,
                 sample_frac=0.6, eval_frac=0.2,
-                expert_hdf5=None, expert_train_demos=0, expert_eval_demos=0):
-    """sample_pool <- rollouts (candidates); train/eval <- remaining rollouts and/or expert."""
+                expert_hdf5=None, expert_train_demos=0, expert_eval_demos=0,
+                holdout_by_snapshot=False, eval_snapshots=3):
+    """sample_pool <- rollouts (candidates); train/eval <- remaining rollouts and/or expert.
+
+    holdout_by_snapshot=True makes eval a COVARIATE-SHIFTED held-out set (paper-style): the
+    last `eval_snapshots` DP checkpoints become eval; the rest are the selection pool. This
+    breaks the i.i.d. train/eval overlap that lets uniform-random selection win by default.
+    """
     npz = sorted(glob.glob(rollouts_glob, recursive=True))
     if not npz:
         raise FileNotFoundError(f"No rollout npz matched: {rollouts_glob}")
-    random.Random(seed).shuffle(npz)
-    n = len(npz)
-    n_sample = max(1, int(n * sample_frac))
-    n_eval = max(1, int(n * eval_frac))
-    sample_npz = npz[:n_sample]
-    eval_npz = npz[n_sample:n_sample + n_eval]
-    train_npz = npz[n_sample + n_eval:]
+
+    if holdout_by_snapshot:
+        groups = defaultdict(list)
+        for p in npz:
+            groups[_snapshot_key(p)].append(p)
+        gkeys = sorted(groups, key=lambda k: k[1])          # by DP training step
+        if len(gkeys) <= eval_snapshots:
+            raise ValueError(f"only {len(gkeys)} snapshot group(s); need > eval_snapshots={eval_snapshots}. "
+                             f"Collect more DP snapshots or lower --eval_snapshots.")
+        eval_gkeys = gkeys[-eval_snapshots:]
+        eval_npz = [p for k in eval_gkeys for p in groups[k]]
+        remaining = [p for k in gkeys[:-eval_snapshots] for p in groups[k]]
+        random.Random(seed).shuffle(remaining)
+        cut = max(1, int(len(remaining) * 0.8))
+        sample_npz = remaining[:cut]
+        train_npz = remaining[cut:]
+        print(f"[holdout_by_snapshot] {len(gkeys)} snapshots; eval = last {eval_snapshots} "
+              f"(steps {[k[1] for k in eval_gkeys]}); sample={len(sample_npz)} train={len(train_npz)} eval={len(eval_npz)}")
+    else:
+        random.Random(seed).shuffle(npz)
+        n = len(npz)
+        n_sample = max(1, int(n * sample_frac))
+        n_eval = max(1, int(n * eval_frac))
+        sample_npz = npz[:n_sample]
+        eval_npz = npz[n_sample:n_sample + n_eval]
+        train_npz = npz[n_sample + n_eval:]
 
     out = Path(out_dir)
     counts = {}
@@ -87,6 +120,9 @@ if __name__ == "__main__":
     ap.add_argument("--expert_hdf5", default=None)
     ap.add_argument("--expert_train_demos", type=int, default=0)
     ap.add_argument("--expert_eval_demos", type=int, default=0)
+    ap.add_argument("--holdout_by_snapshot", action="store_true",
+                    help="eval = last K DP snapshots (covariate-shift, paper-style) instead of i.i.d. split")
+    ap.add_argument("--eval_snapshots", type=int, default=3)
     a = ap.parse_args()
 
     rollouts_glob = a.rollouts_glob
@@ -99,5 +135,7 @@ if __name__ == "__main__":
                          sample_frac=a.sample_frac, eval_frac=a.eval_frac,
                          expert_hdf5=a.expert_hdf5,
                          expert_train_demos=a.expert_train_demos,
-                         expert_eval_demos=a.expert_eval_demos)
+                         expert_eval_demos=a.expert_eval_demos,
+                         holdout_by_snapshot=a.holdout_by_snapshot,
+                         eval_snapshots=a.eval_snapshots)
     print(f"built pools in {out_dir}: {counts}")
