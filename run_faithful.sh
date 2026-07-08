@@ -22,43 +22,64 @@ PP="$PWD:$PWD/IDM"
 TASK="${TASK:-can}"; SEED="${SEED:-0}"; STRATEGY="${STRATEGY:-topology}"
 NUM_EXP_TRAJS="${NUM_EXP_TRAJS:-50}"
 DP_BATCH="${DP_BATCH:-32}"; TOPO_LAMBDA="${TOPO_LAMBDA:-0.1}"
+# Stage-A positive-control knobs (defaults preserve the original behavior):
+#   MIX_RATIO         selected-data dose in the non-expert batch half (was hard-coded 0.3)
+#   HOLDOUT_SNAPSHOTS >0 -> eval = last K DP snapshots (covariate shift) vs the i.i.d. split
+#   POOL_TAG          suffix for pool dir + WM stash so new pools/WMs don't clobber old ones
+#   SAMPLE_START      override selection start iter ;  CLAM_DIR  reuse an existing CLAM dir
+MIX_RATIO="${MIX_RATIO:-0.3}"; HOLDOUT_SNAPSHOTS="${HOLDOUT_SNAPSHOTS:-0}"; POOL_TAG="${POOL_TAG:-}"
 case "${SCALE:-medium}" in
   toy)    DP_STEPS=120;   SNAP=2;  SNAP_EVERY=60;   CLAM_UPD=20;    WM_ITRS=30;    SEL=4;   REFRESH=10;  START=5 ;;
   medium) DP_STEPS=6000;  SNAP=10; SNAP_EVERY=600;  CLAM_UPD=10000; WM_ITRS=20000; SEL=64;  REFRESH=2000;START=2000 ;;
   full)   DP_STEPS=24000; SNAP=30; SNAP_EVERY=3000; CLAM_UPD=50000; WM_ITRS=200000;SEL=120; REFRESH=5000;START=5000 ;;
   *) echo "SCALE must be toy|medium|full"; exit 1 ;;
 esac
+START="${SAMPLE_START:-$START}"   # allow overriding the selection start iter
 EXP="faithful_${TASK}_${SCALE}"
 LOG="scratch_dir/logs/robomimic__${TASK}/${EXP}/seed${SEED}"
-POOLS="$PWD/scratch_dir/pools/${TASK}_${SCALE}"
+POOLS="$PWD/scratch_dir/pools/${TASK}_${SCALE}${POOL_TAG}"
+ROLLOUTS_DIR="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/dp_rollouts"
 COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_trajs ${NUM_EXP_TRAJS} --use_wandb False --set done_mode 0 --set shape_rewards False"
 
-# Steps 1-3 produce SHARED artifacts (DP pool + CLAM); idempotent so random/idm/topology reuse them.
-if [ ! -f "$POOLS/sample_pool.jsonl" ]; then
+# [1] DP collection — reuse existing rollouts if present (never re-collect for a new POOL_TAG).
+if [ -z "$(find "$ROLLOUTS_DIR" -name '*.npz' -print -quit 2>/dev/null)" ]; then
   echo "===== [1/4] DP collection (steps=${DP_STEPS}, snapshots=${SNAP}) ====="
   PYTHONPATH="$PP" python -u train_wm.py $COMMON \
     --set train_dp_mppi False --set dp.batch_size ${DP_BATCH} \
     --set dp.train_steps ${DP_STEPS} --set dp.eval_freq $((DP_STEPS/2)) \
     --set dp.rollout_snapshot_count ${SNAP} --set dp.rollout_snapshot_steps ${SNAP_EVERY} \
     --set dp.rollout_snapshot_noise_std 0.10
-  echo "===== [2/4] build pools ====="
-  PYTHONPATH="$PWD" python datasets/build_pools.py \
-    --rollouts_glob "scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/dp_rollouts/**/*.npz" --out_dir "$POOLS"
 else
-  echo "===== [1-2/4] reuse existing pools at $POOLS ====="
+  echo "===== [1/4] reuse existing DP rollouts in $ROLLOUTS_DIR ====="
+fi
+
+# [2] build pools — skip if this pool dir already built (POOL_TAG isolates new splits).
+if [ ! -f "$POOLS/sample_pool.jsonl" ]; then
+  echo "===== [2/4] build pools (holdout_snapshots=${HOLDOUT_SNAPSHOTS}) -> $POOLS ====="
+  HOLD_ARGS=""
+  if [ "${HOLDOUT_SNAPSHOTS}" -gt 0 ]; then HOLD_ARGS="--holdout_by_snapshot --eval_snapshots ${HOLDOUT_SNAPSHOTS}"; fi
+  PYTHONPATH="$PWD" python datasets/build_pools.py \
+    --rollouts_glob "$ROLLOUTS_DIR/**/*.npz" --out_dir "$POOLS" $HOLD_ARGS
+else
+  echo "===== [2/4] reuse existing pools at $POOLS ====="
 fi
 DPCKPT="$PWD/$(find scratch_dir -name DP_Pretrain_base_policy_latest.pt -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)"
 echo "DP ckpt: $DPCKPT"
 
 if [ ! -f "$POOLS/clam_dir.txt" ]; then
-  echo "===== [3/4] CLAM IDM train (updates=${CLAM_UPD}) ====="
-  PYTHONPATH="$PP" python IDM/scripts/train_idm_action_decoder.py \
-    --config-name train_st_vivit_clam_stm env=robomimic_sailor env.env_id=${TASK} \
-    data.source=sailor_pool data.sailor_pool_train_jsonl="$POOLS/train_pool.jsonl" data.sailor_pool_eval_jsonl="$POOLS/eval_pool.jsonl" \
-    data.data_dir=./IDM/data data.data_type=n_step data.seq_len=8 data.batch_size="${CLAM_BATCH:-8}" \
-    data.num_trajs=-1 env.image_obs=True data.use_images=True data.drop_images_after_obs=True \
-    use_wandb=False num_updates=${CLAM_UPD} save_every=$((CLAM_UPD/2))
-  ls -dt "$PWD"/results/*/st_vivit_clam_stm/*/ | head -1 > "$POOLS/clam_dir.txt"
+  if [ -n "${CLAM_DIR:-}" ]; then
+    echo "===== [3/4] reuse CLAM from \$CLAM_DIR ($CLAM_DIR) ====="
+    echo "$CLAM_DIR" > "$POOLS/clam_dir.txt"
+  else
+    echo "===== [3/4] CLAM IDM train (updates=${CLAM_UPD}) ====="
+    PYTHONPATH="$PP" python IDM/scripts/train_idm_action_decoder.py \
+      --config-name train_st_vivit_clam_stm env=robomimic_sailor env.env_id=${TASK} \
+      data.source=sailor_pool data.sailor_pool_train_jsonl="$POOLS/train_pool.jsonl" data.sailor_pool_eval_jsonl="$POOLS/eval_pool.jsonl" \
+      data.data_dir=./IDM/data data.data_type=n_step data.seq_len=8 data.batch_size="${CLAM_BATCH:-8}" \
+      data.num_trajs=-1 env.image_obs=True data.use_images=True data.drop_images_after_obs=True \
+      use_wandb=False num_updates=${CLAM_UPD} save_every=$((CLAM_UPD/2))
+    ls -dt "$PWD"/results/*/st_vivit_clam_stm/*/ | head -1 > "$POOLS/clam_dir.txt"
+  fi
 else
   echo "===== [3/4] reuse existing CLAM ====="
 fi
@@ -72,7 +93,7 @@ PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
   --set wm_only_eval_pool_jsonl "$POOLS/eval_pool.jsonl" \
   --set wm_only_sample_select_strategy ${STRATEGY} --set wm_only_sample_select_size ${SEL} \
   --set wm_only_sample_select_kwargs_json "$KW" \
-  --set wm_only_sample_start_itr ${START} --set wm_only_sample_refresh_every ${REFRESH} --set wm_only_sample_mix_ratio 0.3 \
+  --set wm_only_sample_start_itr ${START} --set wm_only_sample_refresh_every ${REFRESH} --set wm_only_sample_mix_ratio ${MIX_RATIO} \
   --set wm_only_train_itrs ${WM_ITRS} --set wm_eval_every $((REFRESH)) \
   --set dp.rollout_snapshot_count 0 --set train_dp_mppi_params.use_discrim False --set dp.pretrained_ckpt "$DPCKPT"
 
@@ -80,7 +101,7 @@ PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
 # latest_residual_checkpoint.pt. The seed in the name lets concurrent multi-seed runs
 # (e.g. seed0 on one GPU, seed1 on another) coexist without clobbering each other's stash.
 WM_SRC="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/latest_residual_checkpoint.pt"
-WM_DST="scratch_dir/wm_final_${STRATEGY}_${SCALE}_seed${SEED}.pt"
+WM_DST="scratch_dir/wm_final_${STRATEGY}_${SCALE}${POOL_TAG}_seed${SEED}.pt"
 if [ -f "$WM_SRC" ]; then
   cp "$WM_SRC" "$WM_DST"
   echo "stashed WM -> $WM_DST"
