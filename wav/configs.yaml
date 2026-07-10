@@ -59,6 +59,10 @@ defaults:
   wm_only_sample_select_kwargs_json: "{}"
   wm_only_sample_start_itr: 0
   wm_only_sample_mix_ratio: 0.0
+  # Budget mode (Design D): selections ACCUMULATE across refreshes and already-selected
+  # episodes are excluded from later rounds -> every strategy acquires the same fixed
+  # budget of unique episodes (kills the coverage asymmetry vs re-permuting random).
+  wm_only_sample_budget_mode: False
   wm_only_train_itrs: 5000
   wm_eval_every: 0
   wm_only_eval_pool_jsonl: null

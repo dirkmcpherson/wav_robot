@@ -170,15 +170,50 @@ def _episode_signals(ep, wm, clam, adec, use_transformer, distributional, device
     return idm_mse, topo_dis
 
 
+@torch.no_grad()
+def _oracle_episode_score(ep, wm, device, horizon=8, batch_length=32):
+    """Paper's Oracle: true open-loop image prediction error under LOGGED actions.
+    Mean openloop_img_pred_loss over batch_length windows (mirrors eval_wm_metrics)."""
+    T = int(np.asarray(ep["action"]).shape[0])
+    vals = []
+    for start in range(0, T - 1, batch_length):
+        end = min(start + batch_length, T)
+        if end - start < 2:
+            continue
+        sub = {k: np.asarray(v)[start:end] for k, v in ep.items()
+               if np.asarray(v).ndim >= 1 and np.asarray(v).shape[0] == T}
+        b = _wm_batch(sub, device)
+        b["is_first"][:, 0] = 1.0
+        m = wm.evaluate_batch_metrics(b)
+        if "openloop_img_pred_loss" in m:
+            vals.append(float(m["openloop_img_pred_loss"]))
+    return float(np.mean(vals)) if vals else float("nan")
+
+
 def score_episodes(strategy, refs, kwargs, seed=0):
     if strategy in ("progress", "curiosity", "uncertainty"):
         raise NotImplementedError(
             f"strategy '{strategy}' scoring pending (needs WM snapshot ckpt[s]). kwargs={list(kwargs)}")
-    if strategy not in ("idm", "topology"):
+    if strategy not in ("idm", "topology", "oracle"):
         raise ValueError(f"no scorer for strategy {strategy!r}")
 
     device = kwargs.get("device", "cuda:0" if torch.cuda.is_available() else "cpu")
     wm = _load_wm(kwargs["wm_ckpt_path"], IMAGE_KEYS, state_dim=9, num_actions=7, device=device)
+
+    if strategy == "oracle":
+        # No CLAM needed: score = the WM's true open-loop error with logged actions.
+        wm._config.openloop_img_pred_horizon = int(kwargs.get("oracle_horizon", 8))
+        wm._config.log_openloop_img_pred = True
+        scores = np.full(len(refs), np.nan)
+        for i, ref in enumerate(refs):
+            try:
+                with np.load(ref["file_path"], allow_pickle=False) as ep:
+                    ep = {k: ep[k] for k in ep.files}
+                scores[i] = _oracle_episode_score(ep, wm, device)
+            except Exception as e:
+                print(f"[oracle scorer] episode {i} failed: {type(e).__name__}: {e}")
+        med = np.nanmedian(scores) if np.isfinite(scores).any() else 0.0
+        return np.where(np.isnan(scores), med, scores)
     clam, adec, use_tr, distr = _load_clam(kwargs["idm_ckpt_path"], kwargs["idm_config_path"], device)
 
     idm = np.full(len(refs), np.nan); topo = np.full(len(refs), np.nan)

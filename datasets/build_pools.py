@@ -50,28 +50,39 @@ def _snapshot_key(npz_path):
 def build_pools(rollouts_glob, out_dir, seed=0,
                 sample_frac=0.6, eval_frac=0.2,
                 expert_hdf5=None, expert_train_demos=0, expert_eval_demos=0,
-                holdout_by_snapshot=False, eval_snapshots=3):
+                holdout_by_snapshot=False, eval_snapshots=3, reserve_mid_snapshot=False):
     """sample_pool <- rollouts (candidates); train/eval <- remaining rollouts and/or expert.
 
     holdout_by_snapshot=True makes eval a COVARIATE-SHIFTED held-out set (paper-style): the
     last `eval_snapshots` DP checkpoints become eval; the rest are the selection pool. This
     breaks the i.i.d. train/eval overlap that lets uniform-random selection win by default.
+
+    reserve_mid_snapshot=True additionally reserves the MIDDLE remaining snapshot as a second
+    eval set (eval_pool_mid.jsonl) — the paper-style "reserved checkpoint" eval, where
+    hardness-seeking selection has a fair chance to pay off (Design D).
     """
     npz = sorted(glob.glob(rollouts_glob, recursive=True))
     if not npz:
         raise FileNotFoundError(f"No rollout npz matched: {rollouts_glob}")
 
+    mid_npz = []
     if holdout_by_snapshot:
         groups = defaultdict(list)
         for p in npz:
             groups[_snapshot_key(p)].append(p)
         gkeys = sorted(groups, key=lambda k: k[1])          # by DP training step
-        if len(gkeys) <= eval_snapshots:
+        if len(gkeys) <= eval_snapshots + (1 if reserve_mid_snapshot else 0):
             raise ValueError(f"only {len(gkeys)} snapshot group(s); need > eval_snapshots={eval_snapshots}. "
                              f"Collect more DP snapshots or lower --eval_snapshots.")
         eval_gkeys = gkeys[-eval_snapshots:]
         eval_npz = [p for k in eval_gkeys for p in groups[k]]
-        remaining = [p for k in gkeys[:-eval_snapshots] for p in groups[k]]
+        rem_gkeys = gkeys[:-eval_snapshots]
+        if reserve_mid_snapshot:
+            mid_key = rem_gkeys[len(rem_gkeys) // 2]
+            mid_npz = groups[mid_key]
+            rem_gkeys = [k for k in rem_gkeys if k != mid_key]
+            print(f"[reserve_mid_snapshot] eval_pool_mid = snapshot step {mid_key[1]} ({len(mid_npz)} eps)")
+        remaining = [p for k in rem_gkeys for p in groups[k]]
         random.Random(seed).shuffle(remaining)
         cut = max(1, int(len(remaining) * 0.8))
         sample_npz = remaining[:cut]
@@ -102,6 +113,8 @@ def build_pools(rollouts_glob, out_dir, seed=0,
     counts["sample"] = _write(out / "sample_pool.jsonl", _npz_refs(sample_npz, "sample"))
     counts["train"] = _write(out / "train_pool.jsonl", train_refs)
     counts["eval"] = _write(out / "eval_pool.jsonl", eval_refs)
+    if mid_npz:
+        counts["eval_mid"] = _write(out / "eval_pool_mid.jsonl", _npz_refs(mid_npz, "evalmid"))
     return counts
 
 
@@ -123,6 +136,8 @@ if __name__ == "__main__":
     ap.add_argument("--holdout_by_snapshot", action="store_true",
                     help="eval = last K DP snapshots (covariate-shift, paper-style) instead of i.i.d. split")
     ap.add_argument("--eval_snapshots", type=int, default=3)
+    ap.add_argument("--reserve_mid_snapshot", action="store_true",
+                    help="also reserve the middle remaining snapshot as eval_pool_mid.jsonl (Design D)")
     a = ap.parse_args()
 
     rollouts_glob = a.rollouts_glob
@@ -137,5 +152,6 @@ if __name__ == "__main__":
                          expert_train_demos=a.expert_train_demos,
                          expert_eval_demos=a.expert_eval_demos,
                          holdout_by_snapshot=a.holdout_by_snapshot,
-                         eval_snapshots=a.eval_snapshots)
+                         eval_snapshots=a.eval_snapshots,
+                         reserve_mid_snapshot=a.reserve_mid_snapshot)
     print(f"built pools in {out_dir}: {counts}")

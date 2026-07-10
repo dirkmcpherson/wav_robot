@@ -35,6 +35,9 @@ case "${SCALE:-medium}" in
   *) echo "SCALE must be toy|medium|full"; exit 1 ;;
 esac
 START="${SAMPLE_START:-$START}"   # allow overriding the selection start iter
+# Design D overrides: budget-locked acquisition (see wm_only_sample_budget_mode) + custom cadence.
+SEL="${SEL_OVERRIDE:-$SEL}"; REFRESH="${REFRESH_OVERRIDE:-$REFRESH}"; WM_ITRS="${ITRS_OVERRIDE:-$WM_ITRS}"
+BUDGET_MODE="${BUDGET_MODE:-False}"; RESERVE_MID="${RESERVE_MID:-0}"
 EXP="faithful_${TASK}_${SCALE}"
 LOG="scratch_dir/logs/robomimic__${TASK}/${EXP}/seed${SEED}"
 POOLS="$PWD/scratch_dir/pools/${TASK}_${SCALE}${POOL_TAG}"
@@ -58,6 +61,7 @@ if [ ! -f "$POOLS/sample_pool.jsonl" ]; then
   echo "===== [2/4] build pools (holdout_snapshots=${HOLDOUT_SNAPSHOTS}) -> $POOLS ====="
   HOLD_ARGS=""
   if [ "${HOLDOUT_SNAPSHOTS}" -gt 0 ]; then HOLD_ARGS="--holdout_by_snapshot --eval_snapshots ${HOLDOUT_SNAPSHOTS}"; fi
+  if [ "${RESERVE_MID}" = "1" ]; then HOLD_ARGS="$HOLD_ARGS --reserve_mid_snapshot"; fi
   PYTHONPATH="$PWD" python datasets/build_pools.py \
     --rollouts_glob "$ROLLOUTS_DIR/**/*.npz" --out_dir "$POOLS" $HOLD_ARGS
 else
@@ -94,6 +98,7 @@ PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
   --set wm_only_sample_select_strategy ${STRATEGY} --set wm_only_sample_select_size ${SEL} \
   --set wm_only_sample_select_kwargs_json "$KW" \
   --set wm_only_sample_start_itr ${START} --set wm_only_sample_refresh_every ${REFRESH} --set wm_only_sample_mix_ratio ${MIX_RATIO} \
+  --set wm_only_sample_budget_mode ${BUDGET_MODE} \
   --set wm_only_train_itrs ${WM_ITRS} --set wm_eval_every $((REFRESH)) \
   --set dp.rollout_snapshot_count 0 --set train_dp_mppi_params.use_discrim False --set dp.pretrained_ckpt "$DPCKPT"
 

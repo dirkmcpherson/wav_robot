@@ -82,25 +82,53 @@ class SampleSelectorService:
                     hist.append(hist[-1])
                 strategy_kwargs["wm_ckpt_paths"] = hist[:ensemble_size]
                 strategy_kwargs["ensemble_size"] = ensemble_size
-        elif strategy in ("idm", "topology"):
+        elif strategy in ("idm", "topology", "oracle"):
             # topology = idm (WAV) base + lambda * FDM<->IDM topology disagreement;
-            # both need the current WM snapshot paired with the user-supplied CLAM IDM.
+            # idm/topology need the current WM snapshot paired with the user-supplied CLAM
+            # IDM; oracle needs only the WM snapshot (true prediction error, logged actions).
             strategy_kwargs.setdefault("wm_ckpt_path", str(current_ckpt))
 
         selection_dir = trainer.config.logdir / "sample_selection"
         selection_dir.mkdir(parents=True, exist_ok=True)
         output_jsonl = selection_dir / f"selected_itr_{n_wm_itr}_{strategy}.jsonl"
 
+        # Budget mode (Design D): acquisitions ACCUMULATE and prior selections are excluded
+        # from the candidate pool, so every strategy acquires the same fixed budget of
+        # unique episodes. Random uses a FIXED seed (draws without replacement across
+        # rounds via the exclusion); non-budget mode keeps the legacy re-permuting seed.
+        budget_mode = bool(getattr(trainer.config, "wm_only_sample_budget_mode", False))
+        pool_jsonl = pathlib.Path(source_jsonl)
+        if budget_mode:
+            if not hasattr(trainer, "_selected_episode_ids"):
+                trainer._selected_episode_ids = set()
+            if trainer._selected_episode_ids:
+                with open(source_jsonl, "r", encoding="utf-8") as f:
+                    refs = [json.loads(line) for line in f if line.strip()]
+                remaining = [
+                    r for r in refs
+                    if r.get("episode_id") not in trainer._selected_episode_ids
+                ]
+                pool_jsonl = selection_dir / f"remaining_pool_itr_{n_wm_itr}.jsonl"
+                with open(pool_jsonl, "w", encoding="utf-8") as f:
+                    for r in remaining:
+                        f.write(json.dumps(r) + "\n")
+                cprint(
+                    f"[Sample Selection] budget mode: {len(remaining)}/{len(refs)} candidates remain "
+                    f"({len(trainer._selected_episode_ids)} already acquired)",
+                    "cyan",
+                )
+        selection_seed = seed_base if budget_mode else seed_base + n_wm_itr
+
         cprint(
             f"[Sample Selection] itr={n_wm_itr} strategy={strategy} size={select_size}",
             "cyan",
         )
         request = SelectionRequest(
-            sample_pool_jsonl=pathlib.Path(source_jsonl),
+            sample_pool_jsonl=pool_jsonl,
             output_jsonl=output_jsonl,
             strategy=strategy,
             select_size=select_size,
-            seed=seed_base + n_wm_itr,
+            seed=selection_seed,
             strategy_kwargs=strategy_kwargs,
         )
         result = run_selection(request=request, context=None)
@@ -111,6 +139,16 @@ class SampleSelectorService:
                 "red",
             )
             return False
+        if budget_mode:
+            trainer._selected_episode_ids.update(new_sample_eps.keys())
+            if getattr(trainer, "sample_eps", None):
+                merged = trainer.sample_eps
+                merged.update(new_sample_eps)
+                new_sample_eps = merged
+            cprint(
+                f"[Sample Selection] budget mode: cumulative acquired = {len(new_sample_eps)} episodes",
+                "cyan",
+            )
         trainer.sample_eps = new_sample_eps
         trainer._prev_sample_select_ckpt = current_ckpt
         cprint(

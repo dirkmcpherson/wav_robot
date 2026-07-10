@@ -68,7 +68,7 @@ def run_selection(request: SelectionRequest, context=None) -> SelectionResult:
         rng = np.random.RandomState(request.seed)
         chosen = [refs[i] for i in rng.permutation(n)[: request.select_size]]
         num_scored = n
-    elif strat in ("idm", "topology", "progress", "curiosity", "uncertainty"):
+    elif strat in ("idm", "topology", "oracle", "progress", "curiosity", "uncertainty"):
         from datasets._scorers import score_episodes  # heavy imports kept lazy
         scores = score_episodes(strat, refs, kw, seed=request.seed)
         chosen = _topk_by_score(refs, scores, request.select_size)
