@@ -143,3 +143,16 @@ WAV" (stochastic top-tier sampling) −43% MSE, beats everything; (3) the placeb
 
 Track 3 (robot Design D) implemented and pushed (budget-locked acquisition, oracle arm,
 mid-snapshot eval; run_designD.sh) — not yet run.
+
+## Final MiniGrid adjudication (2026-07-10, post-placebo follow-ups)
+
+- Noise effect identified as prior art: Kirsch et al., "Stochastic Batch Acquisition"
+  (arXiv:2106.12059, TMLR) — our rank-noise is their soft-rank variant. Domain replication, not novel.
+- Residual test (topology ON TOP of the noise baseline, identical per-seed noise realization):
+  +0.05·topo actively harmful (0.595 vs 0.553, p=0.0003). −0.05·topo (INVERTED: select FDM↔IDM
+  topological AGREEMENT) trended exploratory (p=.079) and was **CONFIRMED pre-registered on fresh
+  seeds 68-87: 0.537 vs 0.565, t=−3.52, one-sided p=0.0011 (15/20)**.
+- Best known strategy: rank(wav) + 0.20·rank(noise) − 0.05·rank(topo_dis) = 0.537
+  (WAV 0.96, Random 1.34). Interpretation: among hard transitions, FDM↔IDM representational
+  AGREEMENT marks hard-but-learnable; disagreement marks hard-but-unhelpful — consistent with the
+  robot diagnosis. Surviving novel contribution = this inverted residual + the control methodology.
