@@ -126,3 +126,20 @@ recon. The corrected experiments above are consistent with all four.
    replacement; MIX_RATIO=1.0 with replay = acquired set; eval horizon-31 open-loop MSE on last-snapshot
    holdout + one reserved mid checkpoint; add an **Oracle arm** (true prediction error, logged actions).
    Gate: seed 0 (2 WM runs); stop on null (question closed), expand to 3 seeds only on ≥5% idm win.
+
+## Post-board execution results (2026-07-10)
+
+**Track 2 (MiniGrid placebo) — KILL CRITERION FIRED; the topology claim is DEAD.** The earlier
+statement above that the MiniGrid topology supplement "is the sound contribution" is RETRACTED:
+- Shuffled-topology placebo (n=20, drift control bit-exact): WAV+λ·noise **beats** WAV+λ·topology
+  in **20/20 seeds** (0.595 vs 0.800 at λ=0.05, t=−15.3; recovers 217% of the improvement).
+- Sign-flip arm (−λ topology): 0.650 — better than +λ, still loses to noise (16/20).
+- Noise λ sweep monotone: 0.05→0.595, 0.10→0.553, 0.20→0.550 = best strategy ever measured on the
+  benchmark (WAV 0.96, Uncertainty 0.83, Random 1.34).
+- Mechanism: corr(rank_wav, rank_topo)=+0.2 → topology reinforces WAV's redundant ranking
+  (77/100 pick overlap vs WAV-only); noise diversifies (24–40/100), breaks trajectory clusters.
+**Surviving results: (1) WAV > random in MiniGrid (faithful WAV); (2) NEW headline — "ε-diversified
+WAV" (stochastic top-tier sampling) −43% MSE, beats everything; (3) the placebo methodology itself.**
+
+Track 3 (robot Design D) implemented and pushed (budget-locked acquisition, oracle arm,
+mid-snapshot eval; run_designD.sh) — not yet run.
