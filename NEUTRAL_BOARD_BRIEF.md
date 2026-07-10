@@ -93,3 +93,36 @@ triple-broken (double-preprocess, mislabeled model_loss, and an i.i.d. split tha
 favors uniform random). (3) "topology > WAV" in the old numbers was a dilution-toward-random
 artifact. (4) The paper's success axis is open-loop MSE / downstream reward, not teacher-forced
 recon. The corrected experiments above are consistent with all four.
+
+## Board verdict (2026-07-09, 4-member decision board)
+
+**The working diagnosis above is OVERTURNED.** Code-verified corrections:
+- The injected collection noise creates NO aleatoric hardness: the executed action (base+noise,
+  clipped) is logged and conditions the WM (`rollout_utils.py:209-212`); robosuite is deterministic
+  given (state, action). Noise is uniform across pool AND eval snapshots. Its only effect is
+  off-manifold state visitation (covariate mismatch).
+- Real explanation for the null (two structural artifacts): (1) **coverage asymmetry** — random
+  re-permutes each refresh (`sample_selector_service.py:103`) and sweeps the whole ~552-episode pool
+  over ~40 refreshes, while idm re-selects a near-static top-120 (Jaccard .86–.97) → the run compared
+  full coverage vs a fixed hard subset under data abundance; (2) **non-binding budget** — 50% fixed
+  expert half + mix-ratio coin flip → selection controls ~30% of batches (paper: binding 200-traj budget).
+- **The paper's robot experiments are PASSIVE pool selection too** (App E.3.1: 9 imperfect DP
+  checkpoints → pool, 10th reserved as validation, no injected noise). Fork C ("build active WAV")
+  was premised on a misreading; rejected. The paper DOES beat uniform random (Vanilla-IDM, Fig 6,
+  ~28% on Can) → our null is in real tension with the paper; pool/regime construction is the suspect.
+- **STRUCK from the record:** the plan-B synthetic mechanism result (`bmech.py`/`mechanism.py`,
+  "topology −22%, 5/5 seeds") — same double-preprocess bug class (trains+evals on ~black images,
+  scored on fallback `model_loss`). Topology's ONLY clean support is MiniGrid.
+- The "+0.44 informative signal" is partially circular (score and "true error" share the same WM);
+  a recorded-action control is needed before citing it as validating inverse verification.
+
+**Decision:** reject fork A as designed and fork C. Program:
+1. FREE (cluster): coverage diagnostics on `sample_selection/selected_itr_*.jsonl` (unique-coverage
+   counts, idm Jaccard, snapshot histograms) + recorded-action circularity control.
+2. CRITICAL PATH (CPU, MiniGrid): **shuffled-topology placebo at matched λ, n=20** — the +16%
+   headline is currently uncontrolled; this armors or kills the actual contribution.
+3. GATED ROBOT (“Design D”, ≤2 H200-days): budget-locked selection on the EXISTING pool — 50-demo
+   warm-up + cumulative binding budget of 120 episodes in 2 rounds; random drawn once without
+   replacement; MIX_RATIO=1.0 with replay = acquired set; eval horizon-31 open-loop MSE on last-snapshot
+   holdout + one reserved mid checkpoint; add an **Oracle arm** (true prediction error, logged actions).
+   Gate: seed 0 (2 WM runs); stop on null (question closed), expand to 3 seeds only on ≥5% idm win.
