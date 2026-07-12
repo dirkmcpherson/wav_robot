@@ -51,7 +51,7 @@ if [ -z "$(find "$ROLLOUTS_DIR" -name '*.npz' -print -quit 2>/dev/null)" ]; then
     --set train_dp_mppi False --set dp.batch_size ${DP_BATCH} \
     --set dp.train_steps ${DP_STEPS} --set dp.eval_freq $((DP_STEPS/2)) \
     --set dp.rollout_snapshot_count ${SNAP} --set dp.rollout_snapshot_steps ${SNAP_EVERY} \
-    --set dp.rollout_snapshot_noise_std 0.10
+    --set dp.rollout_snapshot_noise_std ${NOISE_STD:-0.10}
 else
   echo "===== [1/4] reuse existing DP rollouts in $ROLLOUTS_DIR ====="
 fi
