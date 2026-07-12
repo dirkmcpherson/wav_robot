@@ -42,10 +42,13 @@ EXP="faithful_${TASK}_${SCALE}"
 LOG="scratch_dir/logs/robomimic__${TASK}/${EXP}/seed${SEED}"
 POOLS="$PWD/scratch_dir/pools/${TASK}_${SCALE}${POOL_TAG}"
 ROLLOUTS_DIR="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/dp_rollouts"
-COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_trajs ${NUM_EXP_TRAJS} --use_wandb False --set done_mode 0 --set shape_rewards False"
+# NOTE: --set seed is REQUIRED for SEED to reach train_wm.py (its logdir seed comes from
+# config, default 0). Without it, a SEED=1 run trains/collects into .../seed0/ (bug hit 2026-07-11).
+COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_trajs ${NUM_EXP_TRAJS} --use_wandb False --set done_mode 0 --set shape_rewards False --set seed ${SEED}"
 
-# [1] DP collection — reuse existing rollouts if present (never re-collect for a new POOL_TAG).
-if [ -z "$(find "$ROLLOUTS_DIR" -name '*.npz' -print -quit 2>/dev/null)" ]; then
+# [1] DP collection — reuse existing rollouts if present (never re-collect for a new POOL_TAG),
+# and skip entirely when the pool is already built (a pre-built pool needs no rollout dir).
+if [ ! -f "$POOLS/sample_pool.jsonl" ] && [ -z "$(find "$ROLLOUTS_DIR" -name '*.npz' -print -quit 2>/dev/null)" ]; then
   echo "===== [1/4] DP collection (steps=${DP_STEPS}, snapshots=${SNAP}) ====="
   PYTHONPATH="$PP" python -u train_wm.py $COMMON \
     --set train_dp_mppi False --set dp.batch_size ${DP_BATCH} \
