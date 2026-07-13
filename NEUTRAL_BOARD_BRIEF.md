@@ -156,3 +156,28 @@ mid-snapshot eval; run_designD.sh) — not yet run.
   (WAV 0.96, Random 1.34). Interpretation: among hard transitions, FDM↔IDM representational
   AGREEMENT marks hard-but-learnable; disagreement marks hard-but-unhelpful — consistent with the
   robot diagnosis. Surviving novel contribution = this inverted residual + the control methodology.
+
+## Robot line CLOSED — diagnosed negative (2026-07-13)
+
+Design D (budget-locked selection + oracle arm, noisy pool) → random < oracle < idm (oracle +9.7%,
+idm +12.4% vs random @ eval_pool h8). Design A (same regime, pool RE-COLLECTED noise-free —
+noise_std=0, checkpoint-diversity only per paper App E.3.1, 840 clean episodes):
+
+| eval / horizon | random | oracle | idm |
+|---|---|---|---|
+| eval_pool / 8  | 0.00671 | 0.00697 (+3.9%) | 0.00712 (+6.1%) |
+| eval_pool / 31 | 0.00988 | 0.01046 | 0.01111 |
+| eval_mid / 8   | 0.00773 | 0.00794 | 0.00818 |
+| eval_mid / 31  | 0.01209 | 0.01244 | 0.01288 |
+
+**Random best in all 8 cells.** Cleaning the collection noise ~HALVED the hard-selection penalty
+(oracle 9.7%→3.9%) — confirming injected noise was a real contributor — but did NOT flip it. Even
+the ORACLE (true prediction error, no CLAM/scorer) ties-to-slightly-loses to uniform random
+(~0.5–1.4 SE, n=1). Every board-identified variable is now controlled (metric, eval distribution,
+coverage asymmetry, collection noise, scorer quality via the oracle upper bound).
+
+**Verdict:** at this scale, hardness-based selection provides no benefit over uniform random for
+world-model learning on robomimic-can. Could not reproduce the paper's Oracle>Random ordering;
+remaining untested differences are pure scale (64²→256², CLAM 50k→500k, remove 50%-expert anchor,
+n=1→3) — the expensive full-scale campaign. The robot cannot host the inverted-topology residual
+test. Final scope: MiniGrid carries the topology finding; the robot is a fully-diagnosed negative.
