@@ -28,11 +28,16 @@ DP_BATCH="${DP_BATCH:-32}"; TOPO_LAMBDA="${TOPO_LAMBDA:-0.1}"
 #   POOL_TAG          suffix for pool dir + WM stash so new pools/WMs don't clobber old ones
 #   SAMPLE_START      override selection start iter ;  CLAM_DIR  reuse an existing CLAM dir
 MIX_RATIO="${MIX_RATIO:-0.3}"; HOLDOUT_SNAPSHOTS="${HOLDOUT_SNAPSHOTS:-0}"; POOL_TAG="${POOL_TAG:-}"
+# Image resolution: 64 (reduced scale) or 256 (faithful paper reproduction). Requires the
+# matching image_<IMG_SIZE>_done0 expert hdf5 rendered on disk (see render_images.sh).
+IMG_SIZE="${IMG_SIZE:-64}"; export WAV_IMG_SIZE="${IMG_SIZE}"
 case "${SCALE:-medium}" in
   toy)    DP_STEPS=120;   SNAP=2;  SNAP_EVERY=60;   CLAM_UPD=20;    WM_ITRS=30;    SEL=4;   REFRESH=10;  START=5 ;;
+  probe)  DP_STEPS=400;   SNAP=3;  SNAP_EVERY=133;  CLAM_UPD=300;   WM_ITRS=300;   SEL=8;   REFRESH=150; START=100 ;;
   medium) DP_STEPS=6000;  SNAP=10; SNAP_EVERY=600;  CLAM_UPD=10000; WM_ITRS=20000; SEL=64;  REFRESH=2000;START=2000 ;;
   full)   DP_STEPS=24000; SNAP=30; SNAP_EVERY=3000; CLAM_UPD=50000; WM_ITRS=200000;SEL=120; REFRESH=5000;START=5000 ;;
-  *) echo "SCALE must be toy|medium|full"; exit 1 ;;
+  paper)  DP_STEPS=24000; SNAP=30; SNAP_EVERY=3000; CLAM_UPD=500000;WM_ITRS=200000;SEL=120; REFRESH=5000;START=5000 ;;
+  *) echo "SCALE must be toy|probe|medium|full|paper"; exit 1 ;;
 esac
 START="${SAMPLE_START:-$START}"   # allow overriding the selection start iter
 # Design D overrides: budget-locked acquisition (see wm_only_sample_budget_mode) + custom cadence.
@@ -44,7 +49,7 @@ POOLS="$PWD/scratch_dir/pools/${TASK}_${SCALE}${POOL_TAG}"
 ROLLOUTS_DIR="scratch_dir/logs/robomimic__${TASK}/None_demos${NUM_EXP_TRAJS}/seed${SEED}/dp_rollouts"
 # NOTE: --set seed is REQUIRED for SEED to reach train_wm.py (its logdir seed comes from
 # config, default 0). Without it, a SEED=1 run trains/collects into .../seed0/ (bug hit 2026-07-11).
-COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_trajs ${NUM_EXP_TRAJS} --use_wandb False --set done_mode 0 --set shape_rewards False --set seed ${SEED}"
+COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_trajs ${NUM_EXP_TRAJS} --use_wandb False --set done_mode 0 --set shape_rewards False --set seed ${SEED} --set image_size ${IMG_SIZE}"
 
 # [1] DP collection — reuse existing rollouts if present (never re-collect for a new POOL_TAG),
 # and skip entirely when the pool is already built (a pre-built pool needs no rollout dir).
@@ -96,6 +101,7 @@ echo "CLAM dir: $CLAMD"
 echo "===== [4/4] WM-only training (strategy=${STRATEGY}) ====="
 KW=$(python -c "import json,sys;print(json.dumps({'suite':'robomimic','task':sys.argv[2],'device':'cuda:0','idm_ckpt_path':sys.argv[1]+'model_ckpts/latest.pkl','idm_config_path':sys.argv[1]+'config.yaml','idm_seq_len':8,'topology_weight':float(sys.argv[3]),'score_key':'idm_wm_latent_mismatch_mse'}))" "$CLAMD" "$TASK" "$TOPO_LAMBDA")
 PYTHONPATH="$PP" python -u train_wm.py $COMMON --set wm_only_mode True \
+  ${WM_BATCH:+--set batch_size ${WM_BATCH}} \
   --set wm_only_pool_jsonl "$POOLS/train_pool.jsonl" --set wm_only_sample_source_pool_jsonl "$POOLS/sample_pool.jsonl" \
   --set wm_only_eval_pool_jsonl "$POOLS/eval_pool.jsonl" \
   --set wm_only_sample_select_strategy ${STRATEGY} --set wm_only_sample_select_size ${SEL} \

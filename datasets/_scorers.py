@@ -14,12 +14,16 @@ High mismatch = the IDM's action doesn't reproduce the observed dynamics under t
 topology (Phase 4b) = idm + lambda * FDM<->IDM topology disagreement (added later).
 progress/curiosity still pending (need WM snapshot ensembles).
 """
+import os
 import numpy as np
 import torch
 from omegaconf import OmegaConf
 
 IMAGE_KEYS = ("agentview_image", "robot0_eye_in_hand_image")
 CLAM_CAMERA = "agentview_image"
+# Image resolution — 64 for the reduced-scale runs, 256 for the faithful paper reproduction.
+# Set WAV_IMG_SIZE=256 (matches --set image_size 256 + the 256^2-rendered data + CLAM).
+IMG_SIZE = int(os.environ.get("WAV_IMG_SIZE", "64"))
 
 
 # --------------------------------------------------------------------------- #
@@ -30,13 +34,13 @@ def _build_wm(image_keys, state_dim, num_actions, device):
     OmegaConf.set_struct(cfg, False)
     cfg.device = device; cfg.precision = 32; cfg.num_actions = num_actions
     cfg.action_dim = num_actions; cfg.state_only = False; cfg.compile = False
-    cfg.use_wandb = False; cfg.image_size = 64
+    cfg.use_wandb = False; cfg.image_size = IMG_SIZE
     import wav.dreamer.wm as wmmod
     class Sp:
         def __init__(s, sh): s.shape = tuple(sh)
     class OS:
         def __init__(s, d): s.spaces = d
-    spaces = {k: Sp((64, 64, 3)) for k in image_keys}; spaces["state"] = Sp((state_dim,))
+    spaces = {k: Sp((IMG_SIZE, IMG_SIZE, 3)) for k in image_keys}; spaces["state"] = Sp((state_dim,))
     return wmmod.WorldModel(obs_space=OS(spaces), step=0, config=cfg).to(device)
 
 
@@ -61,7 +65,7 @@ def _load_clam(idm_ckpt_path, idm_config_path, device):
     from udrm.models.mlp_policy import MLPPolicy
     cfg = OmegaConf.load(idm_config_path); OmegaConf.resolve(cfg); OmegaConf.set_struct(cfg, False)
     cfg.use_wandb = False
-    clam = get_clam_cls(cfg.name)(cfg.model, input_dim=(3, 64, 64), la_dim=get_la_dim(cfg)).to(device)
+    clam = get_clam_cls(cfg.name)(cfg.model, input_dim=(3, IMG_SIZE, IMG_SIZE), la_dim=get_la_dim(cfg)).to(device)
     adec = MLPPolicy(cfg=cfg.model.action_decoder, input_dim=get_la_dim(cfg),
                      output_dim=cfg.env.action_dim).to(device)
     ck = torch.load(idm_ckpt_path, map_location=device, weights_only=False)
