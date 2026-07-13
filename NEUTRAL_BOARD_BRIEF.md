@@ -181,3 +181,24 @@ world-model learning on robomimic-can. Could not reproduce the paper's Oracle>Ra
 remaining untested differences are pure scale (64²→256², CLAM 50k→500k, remove 50%-expert anchor,
 n=1→3) — the expensive full-scale campaign. The robot cannot host the inverted-topology residual
 test. Final scope: MiniGrid carries the topology finding; the robot is a fully-diagnosed negative.
+
+## Correction (2026-07-13) — the robot result is a reproduction FAILURE, not a settled negative
+
+The "closed / diagnosed negative" framing above is walked back. A failure to reproduce is not a
+finding: we have NO working robot positive control (nothing, including the oracle, ever beat
+random), so the null is AMBIGUOUS between under-scaling, harness insensitivity, and true absence —
+and our data cannot separate them. (Contrast MiniGrid, where WAV>random IS a working positive
+control, which is what licenses trusting its negatives.)
+
+Code-verified prime suspect for harness insensitivity: `mixed_sample` (wav/classes/rollout_utils.py:324)
+HARDCODES 50% expert + 50% other in every batch; MIX_RATIO only picks whether the *other* half is
+the selected pool vs replay. So selection never controlled >50% of the training diet, always fighting
+a fixed half of 50 clean expert demos. Plausibly un-faithful (paper warm-starts then fine-tunes on
+acquired data) and a plausible mask on any selection effect.
+
+Also never tested: the paper's HEADLINE claim is downstream policy reward (+22%) / 2× sample
+efficiency — we only ever measured WM prediction MSE (the axis that rewards typicality).
+
+Load-bearing next experiment: BINDING-BUDGET positive control — shrink the expert half, rerun
+Oracle vs Random on the clean pool. Oracle>Random → harness validated, WAV/topology get a fair
+test. Still null at ~100% selection control → a stronger (still scale-caveated) negative.
