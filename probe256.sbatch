@@ -1,9 +1,8 @@
 #!/bin/bash
-# Phase 0 feasibility+timing probe as a short batch job. Edit the <EDIT> lines, then:
 #   sbatch probe256.sbatch     ;  results in probe256_<jobid>.out (see the PROBE REPORT block)
 #SBATCH --job-name=wav_probe256
-#SBATCH --partition=gpu                 # <EDIT> your GPU partition (sinfo -s)
-#SBATCH --gres=gpu:1                    # <EDIT> the H200
+#SBATCH --partition=preempt             # the ONE thing I don't know — set to your H200 partition
+#SBATCH --gres=gpu:h200:1               # and how you request the H200 (gres string)
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --time=02:00:00                 # render(12 demos) + tiny probe run; generous
@@ -11,9 +10,9 @@
 #SBATCH --error=probe256_%j.out
 
 set -uo pipefail
-cd /cluster/tufts/shortlab/jstale02/wav_robot          # <EDIT if different>
+cd /cluster/tufts/shortlab/jstale02/wav_robot
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate /cluster/tufts/shortlab/jstale02/condaenv/wav_robot_faithful   # <EDIT>
+conda activate /cluster/tufts/shortlab/jstale02/condaenv/wav_robot_faithful
 
 export MUJOCO_GL=egl
 export PYTHONPATH="$PWD:$PWD/IDM"
