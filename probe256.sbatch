@@ -1,10 +1,11 @@
 #!/bin/bash
 #   sbatch probe256.sbatch     ;  results in probe256_<jobid>.out (see the PROBE REPORT block)
 #SBATCH --job-name=wav_probe256
-#SBATCH --partition=preempt             # the ONE thing I don't know — set to your H200 partition
-#SBATCH --gres=gpu:h200:1               # and how you request the H200 (gres string)
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=48G
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:h200:1
+#SBATCH --constraint=h200
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=256g
 #SBATCH --time=02:00:00                 # render(12 demos) + tiny probe run; generous
 #SBATCH --output=probe256_%j.out
 #SBATCH --error=probe256_%j.out
