@@ -56,6 +56,7 @@ COMMON="--configs cfg_dp_mppi robomimic --task robomimic__${TASK} --num_exp_traj
 if [ ! -f "$POOLS/sample_pool.jsonl" ] && [ -z "$(find "$ROLLOUTS_DIR" -name '*.npz' -print -quit 2>/dev/null)" ]; then
   echo "===== [1/4] DP collection (steps=${DP_STEPS}, snapshots=${SNAP}) ====="
   PYTHONPATH="$PP" python -u train_wm.py $COMMON \
+    ${NUM_ENVS:+--set num_envs ${NUM_ENVS}} \
     --set train_dp_mppi False --set dp.batch_size ${DP_BATCH} \
     --set dp.train_steps ${DP_STEPS} --set dp.eval_freq $((DP_STEPS/2)) \
     --set dp.rollout_snapshot_count ${SNAP} --set dp.rollout_snapshot_steps ${SNAP_EVERY} \
